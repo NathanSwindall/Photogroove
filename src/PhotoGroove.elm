@@ -1,28 +1,33 @@
-module PhotoGroove exposing (main)
+module PhotoGroove exposing (main, randomPhotoPicker, Msg)
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
 import Browser
 import Array exposing (Array)
+import Random exposing (int)
+import Random
 
-
+type Status
+    = Loading
+    | Loaded (List Photo) String
+    | Errored String
 type ThumbnailSize
     = Small
     | Medium
     | Large
 
-type alias Msg = 
-    { description : String
-    , data : String
-    }
+type Msg
+    = ClickedPhoto  String
+    | GotSelectedIndex Int
+    | ClickedSize ThumbnailSize
+    | ClickedSurpriseMe
 
 type alias Photo =
     {url : String}
 
 type alias Model = 
-    { photos: List Photo
-    , selectedUrl : String
+    { status : Status
     , chosenSize : ThumbnailSize
     }
 
@@ -37,11 +42,11 @@ view model =
     div [class "content"]
     [h1 [] [text "Photo Groove"]
     , button 
-        [ onClick {description = "ClickedSurpriseMe", data = ""}]
+        [ onClick ClickedSurpriseMe]
         [ text "Suprise Me!"]
     , h3 [] [text "Thumbnail Sizes:"]
     , div [ id "choose-size"]
-        (List.map viewSizeChooser [Small,  Medium,  Large])
+        (List.map (viewSizeChooser model.chosenSize) [Small,  Medium,  Large])
     , div [id "thumbnails", class (sizeToString model.chosenSize)] 
         (List.map (viewThumbnail model.selectedUrl) model.photos)
     , img
@@ -59,15 +64,15 @@ viewThumbnail selectedUrl thumb =
     img
         [src (urlPrefix ++ thumb.url)
         , classList [("selected", selectedUrl == thumb.url)]
-        , onClick { description = "ClickedPhoto", data = thumb.url}
+        , onClick (ClickedPhoto thumb.url)
         ]
         []
 
 
-viewSizeChooser : ThumbnailSize -> Html Msg
-viewSizeChooser size = 
+viewSizeChooser : ThumbnailSize -> ThumbnailSize -> Html Msg
+viewSizeChooser current_size size = 
     label []
-        [ input [ type_ "radio", name "size"] []
+        [ input [ type_ "radio", name "size", onClick (ClickedSize size), checked (current_size == size) ] []
         , text (sizeToString size)
         ]
 
@@ -80,17 +85,13 @@ sizeToString size =
 
 initialModel : Model
 initialModel =   
-    { photos = 
-        [
-           {url = "1.jpeg"}
-        ,  {url = "2.jpeg"}
-        ,  {url = "3.jpeg"}
-        ]
-    ,   selectedUrl = "1.jpeg"
-    ,   chosenSize = Medium
+    { status = Loading
+    , chosenSize = Medium
     }
 
-
+randomPhotoPicker : Random.Generator Int 
+randomPhotoPicker = 
+    Random.int 0 (Array.length photoArray - 1)
 
 photoArray: Array Photo
 photoArray =
@@ -102,19 +103,23 @@ getPhotoUrl index =
         Just photo -> photo.url 
         Nothing -> ""    
 
-
+update: Msg -> Model -> ( Model, Cmd Msg)
 update msg model = 
-    case msg.description of
-        "ClickedPhoto" ->
-                {model | selectedUrl = msg.data}
-        "ClickedSurpriseMe" -> 
-                {model | selectedUrl = "2.jpeg"}
-        _ ->  
-            model
+    case msg of
+        GotSelectedIndex index -> 
+                ( { model | selectedUrl = getPhotoUrl index}, Cmd.none)
+        ClickedPhoto photo-> 
+                ( {model | selectedUrl = photo }, Cmd.none)
+        ClickedSize size ->
+                ({model | chosenSize = size}, Cmd.none)
+        ClickedSurpriseMe -> 
+                ( model, Random.generate GotSelectedIndex randomPhotoPicker)
 
-
-main = Browser.sandbox
-        { init = initialModel
+main: Program () Model Msg
+main = 
+    Browser.element
+        { init = \flags -> (initialModel, Cmd.none)
         , view = view 
         , update = update 
+        , subscriptions = \model -> Sub.none
         }
